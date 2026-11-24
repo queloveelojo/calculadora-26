@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Calculadora de Demanda</title>
+  
+  <!-- Configuración PWA para iOS / iPhone -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Demanda Pro">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --primary: #0f172a;
+      --accent: #2563eb;
+      --text: #1e293b;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 24px);
+    }
+    .header { text-align: center; margin-bottom: 16px; }
+    .header h1 { font-size: 1.25rem; margin: 0; color: var(--primary); }
+    .header p { font-size: 0.8rem; color: var(--muted); margin: 4px 0 0; }
+
+    /* Tarjeta de Resultado Fija */
+    .result-banner {
+      position: sticky;
+      top: calc(env(safe-area-inset-top) + 8px);
+      z-index: 10;
+      background: var(--primary);
+      color: #fff;
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.3);
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .result-main .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
+    .result-main .value { font-size: 2.1rem; font-weight: 700; line-height: 1.1; }
+    .result-sub { text-align: right; font-size: 0.8rem; color: #cbd5e1; line-height: 1.5; }
+    .result-sub span { font-weight: 600; color: #38bdf8; }
+
+    /* Secciones */
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+    }
+    .card h2 {
+      font-size: 0.9rem;
+      margin: 0 0 12px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .field { display: flex; flex-direction: column; }
+    .field label { font-size: 0.78rem; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+    .field small { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+    input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 1rem;
+      background: #f8fafc;
+      color: var(--primary);
+      font-weight: 600;
+    }
+    input[type="number"]:focus { outline: none; border-color: var(--accent); background: #fff; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); margin: 8px 0; }
+    .weight-labels { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; }
+    .btn-reset {
+      width: 100%;
+      padding: 12px;
+      background: #e2e8f0;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Pronóstico de Demanda (D<sub>T+1</sub>)</h1>
+    <p>Modelo Unificado con Flexibilidad y Stock de Seguridad</p>
+  </div>
+
+  <!-- Resultado en tiempo real -->
+  <div class="result-banner">
+    <div class="result-main">
+      <div class="label">Demanda Total (D<sub>T+1</sub>)</div>
+      <div class="value" id="resTotal">0</div>
+    </div>
+    <div class="result-sub">
+      Base ajustada: <span id="resBase">0</span><br>
+      Stock Seg. (S<sub>s</sub>): <span id="resSs">0</span>
+    </div>
+  </div>
+
+  <!-- 1. Base Contractual vs Real -->
+  <div class="card">
+    <h2>1. Núcleo de Demanda</h2>
+    <div class="grid-2">
+      <div class="field">
+        <label>D<sub>Contrato</sub></label>
+        <input type="number" id="dContrato" value="100" step="any" inputmode="decimal">
+        <small>Volumen semanal fijo</small>
+      </div>
+      <div class="field">
+        <label>D̂<sub>Real</sub></label>
+        <input type="number" id="dReal" value="120" step="any" inputmode="decimal">
+        <small>Consumo suavizado</small>
+      </div>
+    </div>
+    <div class="field" style="margin-top: 14px;">
+      <div class="weight-labels">
+        <span>Peso Contrato (w<sub>c</sub>): <span id="lblWc">40%</span></span>
+        <span>Peso Real (w<sub>h</sub>): <span id="lblWh">60%</span></span>
+      </div>
+      <input type="range" id="pesoSlider" min="0" max="100" value="40">
+    </div>
+  </div>
+
+  <!-- 2. Factores de Ajuste y Flexibilidad -->
+  <div class="card">
+    <h2>2. Ajuste y Flexibilidad</h2>
+    <div class="grid-3">
+      <div class="field">
+        <label>S<sub>T</sub> (Estac.)</label>
+        <input type="number" id="sT" value="1.00" step="0.01" inputmode="decimal">
+      </div>
+      <div class="field">
+        <label>T<sub>T</sub> (Tend.)</label>
+        <input type="number" id="tT" value="1.00" step="0.01" inputmode="decimal">
+      </div>
+      <div class="field">
+        <label>E<sub>T</sub> (Event.)</label>
+        <input type="number" id="eT" value="1.00" step="0.01" inputmode="decimal">
+      </div>
+    </div>
+    <div class="field" style="margin-top: 12px;">
+      <label>α<sub>Flexión</sub> (% Tolerancia extra)</label>
+      <input type="number" id="alphaFlex" value="10" step="1" inputmode="decimal">
+      <small>Ej. 10 aplica un multiplicador de (1 + 0,10) = 1,10</small>
+    </div>
+  </div>
+
+  <!-- 3. Stock de Seguridad Ss -->
+  <div class="card">
+    <h2>3. Stock de Seguridad (S<sub>s</sub>)</h2>
+    <div class="grid-3">
+      <div class="field">
+        <label>PME (días)</label>
+        <input type="number" id="pme" value="5" step="any" inputmode="decimal">
+        <small>Plazo máx.</small>
+      </div>
+      <div class="field">
+        <label>PE (días)</label>
+        <input type="number" id="pe" value="3" step="any" inputmode="decimal">
+        <small>Plazo normal</small>
+      </div>
+      <div class="field">
+        <label>D<sub>M</sub> (uds/día)</label>
+        <input type="number" id="dM" value="20" step="any" inputmode="decimal">
+        <small>Demanda diaria</small>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-reset" onclick="resetDefaults()">Restaurar valores por defecto</button>
+
+  <script>
+    const ids = ['dContrato', 'dReal', 'pesoSlider', 'sT', 'tT', 'eT', 'alphaFlex', 'pme', 'pe', 'dM'];
+
+    function calcular() {
+      const dContrato = parseFloat(document.getElementById('dContrato').value) || 0;
+      const dReal = parseFloat(document.getElementById('dReal').value) || 0;
+      
+      const wc = (parseFloat(document.getElementById('pesoSlider').value) || 0) / 100;
+      const wh = +(1 - wc).toFixed(2);
+
+      document.getElementById('lblWc').textContent = Math.round(wc * 100) + '%';
+      document.getElementById('lblWh').textContent = Math.round(wh * 100) + '%';
+
+      const sT = parseFloat(document.getElementById('sT').value) || 0;
+      const tT = parseFloat(document.getElementById('tT').value) || 0;
+      const eT = parseFloat(document.getElementById('eT').value) || 0;
+      const alphaFlex = (parseFloat(document.getElementById('alphaFlex').value) || 0) / 100;
+
+      const pme = parseFloat(document.getElementById('pme').value) || 0;
+      const pe = parseFloat(document.getElementById('pe').value) || 0;
+      const dM = parseFloat(document.getElementById('dM').value) || 0;
+
+      // Fórmula maestra: [(wc*D_Contrato + wh*D_Real) * S_T * T_T * E_T * (1 + alpha)] + Ss
+      const nucleo = (wc * dContrato) + (wh * dReal);
+      const baseAjustada = nucleo * sT * tT * eT * (1 + alphaFlex);
+      const ss = Math.max(0, (pme - pe) * dM);
+      const dTotal = baseAjustada + ss;
+
+      document.getElementById('resBase').textContent = baseAjustada.toFixed(1);
+      document.getElementById('resSs').textContent = ss.toFixed(1);
+      document.getElementById('resTotal').textContent = Math.ceil(dTotal) + ' uds';
+
+      guardarLocal();
+    }
+
+    function guardarLocal() {
+      const data = {};
+      ids.forEach(id => data[id] = document.getElementById(id).value);
+      localStorage.setItem('calc_demanda_v1', JSON.stringify(data));
+    }
+
+    function cargarLocal() {
+      const saved = localStorage.getItem('calc_demanda_v1');
+      if (saved) {
+        const data = JSON.parse(saved);
+        ids.forEach(id => {
+          if (data[id] !== undefined) document.getElementById(id).value = data[id];
+        });
+      }
+      calcular();
+    }
+
+    function resetDefaults() {
+      localStorage.removeItem('calc_demanda_v1');
+      document.getElementById('dContrato').value = 100;
+      document.getElementById('dReal').value = 120;
+      document.getElementById('pesoSlider').value = 40;
+      document.getElementById('sT').value = 1.00;
+      document.getElementById('tT').value = 1.00;
+      document.getElementById('eT').value = 1.00;
+      document.getElementById('alphaFlex').value = 10;
+      document.getElementById('pme').value = 5;
+      document.getElementById('pe').value = 3;
+      document.getElementById('dM').value = 20;
+      calcular();
+    }
+
+    ids.forEach(id => document.getElementById(id).addEventListener('input', calcular));
+    window.addEventListener('DOMContentLoaded', cargarLocal);
+
+    // Registro del Service Worker para funcionamiento offline
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+  </script>
+</body>
+</html>
